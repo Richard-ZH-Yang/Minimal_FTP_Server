@@ -132,29 +132,14 @@ int main(int argc, char **argv)
     }
     printf("server: got connection from %s\n", inet_ntoa(client.sin_addr));
 
-      pthread_t child;
-      if (pthread_create(&child, NULL, handler, new_socket) < 0)
-      {
-        perror("cannot create thread");
-        return -1;
-      }
-      pthread_join(child, NULL);
+    pthread_t child;
+    if (pthread_create(&child, NULL, handler, new_socket) < 0)
+    {
+      perror("cannot create thread");
+      return -1;
+    }
+    pthread_join(child, NULL);
 
-    // while (1)
-    // {
-    //   bzero(buf, MAX_DATA_SIZE);
-    //   if (recv(new_fd, buf, MAX_DATA_SIZE - 1, 0) < 0 || strcmp(buf, "") == 0)
-    //   {
-    //     printf("error reading from socket\n");
-    //     close(new_fd);
-    //     break;
-    //   }
-
-    //   if (parse_cmd(buf) == -1)
-    //   {
-    //     break;
-    //   }
-    // }
 
     // This is how to call the function in dir.c to get a listing of a directory.
     // It requires a file descriptor, so in your code you would pass in the file descriptor
@@ -201,8 +186,6 @@ int parse_cmd(char *cmd)
     }
   }
 
-  printf("%d", command);
-
   switch (command)
   {
   case USER:
@@ -232,7 +215,6 @@ int parse_cmd(char *cmd)
 
 int user(int fd, char *user)
 {
-  printf("in user\n");
   char msg[MAX_DATA_SIZE];
 
   if (user_in == 1)
@@ -246,7 +228,7 @@ int user(int fd, char *user)
   else
   {
     user_in = 1;
-    send_string(fd, "331 Username ok, send password.\n");
+    send_string(fd, "230 User logged in, proceed.\n");
   }
 
   return 0;
@@ -274,24 +256,32 @@ int cwd(int fd, char *directory)
   {
     strcpy(dir, directory);
     char *start = strtok(dir, "/\r\n");
-    if (strcmp(start, ".") == 0 || strcmp(start, ".") == 0)
-    {
-      send_string(fd, "Directory cannot start with ./ or ../");
+    //Directory inputted = '/'
+    if (start == NULL) {
+      send_string(fd, "Cannoto change directory to /\n");
+      return 0;
     }
-
-    start = strtok(NULL, "/\r\n");
+    else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
+    {
+      send_string(fd, "Directory cannot start with ./ or ../\n");
+      return 0;
+    }
 
     while (start != NULL)
     {
       if (strcmp(start, "..") == 0)
       {
-        send_string(fd, "Directory cannot contain ../");
+        send_string(fd, "Directory cannot contain ../\n");
+        return 0;
       }
+
+      start = strtok(NULL, "/\r\n");
     }
 
     if (chdir(dir) == -1)
     {
       send_string(fd, "Failed to change directory.\n");
+      return 0;
     }
     else
     {
@@ -311,11 +301,13 @@ int cdup(int fd, char initial[])
   if (strcmp(current, initial) == 0)
   {
     send_string(fd, "Cannot process this command from parent directory.\n");
+    return 0;
   }
 
   if (chdir("..") == 0)
   {
     send_string(fd, "Directly successfully changed back to parent directory.\n");
+    return 0;
   }
   else
   {
