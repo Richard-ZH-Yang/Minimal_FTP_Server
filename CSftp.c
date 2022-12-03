@@ -132,30 +132,29 @@ int main(int argc, char **argv)
     }
     printf("server: got connection from %s\n", inet_ntoa(client.sin_addr));
 
-    //   pthread_t child;
-    //   if (pthread_create(&child, NULL, handler, new_socket) < 0)
+      pthread_t child;
+      if (pthread_create(&child, NULL, handler, new_socket) < 0)
+      {
+        perror("cannot create thread");
+        return -1;
+      }
+      pthread_join(child, NULL);
+
+    // while (1)
+    // {
+    //   bzero(buf, MAX_DATA_SIZE);
+    //   if (recv(new_fd, buf, MAX_DATA_SIZE - 1, 0) < 0 || strcmp(buf, "") == 0)
     //   {
-    //     perror("cannot create thread");
-    //     return -1;
+    //     printf("error reading from socket\n");
+    //     close(new_fd);
+    //     break;
     //   }
-    //   pthread_join(child, NULL);
+
+    //   if (parse_cmd(buf) == -1)
+    //   {
+    //     break;
+    //   }
     // }
-
-    while (1)
-    {
-      bzero(buf, MAX_DATA_SIZE);
-      if (recv(new_fd, buf, MAX_DATA_SIZE - 1, 0) < 0 || strcmp(buf, "") == 0)
-      {
-        printf("error reading from socket\n");
-        close(new_fd);
-        break;
-      }
-
-      if (parse_cmd(buf) == -1)
-      {
-        break;
-      }
-    }
 
     // This is how to call the function in dir.c to get a listing of a directory.
     // It requires a file descriptor, so in your code you would pass in the file descriptor
@@ -166,22 +165,22 @@ int main(int argc, char **argv)
   }
 }
 
-// void *handler(void *socket)
-// {
-//   printf("thread created!\n");
-//   char msg[1024];
-//   char command[24];
+void *handler(void *socket)
+{
+  printf("thread created!\n");
+  char msg[1024];
+  char command[24];
 
-//   while (recv(new_fd, buf, MAX_DATA_SIZE - 1, 0) > 0)
-//   {
-//     if (parse_cmd(buf) == -1)
-//     {
-//       // TODO: what to do when invalid command?
-//       printf("invalid command, please enter a valid command\n");
-//       continue;
-//     }
-//   }
-// }
+  while (recv(new_fd, buf, MAX_DATA_SIZE - 1, 0) > 0)
+  {
+    if (parse_cmd(buf) == -1)
+    {
+      // TODO: what to do when invalid command?
+      printf("invalid command, please enter a valid command\n");
+      continue;
+    }
+  }
+}
 
 int parse_cmd(char *cmd)
 {
