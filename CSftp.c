@@ -26,6 +26,12 @@ int user(int fd, char *username);
 int quit();
 int cwd(int fd, char *directory);
 int cdup(int fd, char initial[]);
+int type(int fd, char *type);
+int mode(int fd, char *mode);
+int stru(int fd, char *structure);
+int pasv();
+int retr(char *file);
+int nlst();
 
 typedef enum
 {
@@ -58,6 +64,7 @@ char buf[MAX_DATA_SIZE];
 int portNum;
 int user_in = 0;
 char initial[MAX_DATA_SIZE];
+char *rep_type;
 
 void *inc_x()
 {
@@ -76,8 +83,6 @@ int main(int argc, char **argv)
   // int i;
   // pthread_t child;
   // pthread_create(&child, NULL, inc_x, NULL);
-
-  int client_size;
 
   // Check the command line arguments
   if (argc != 2)
@@ -121,6 +126,8 @@ int main(int argc, char **argv)
   }
 
   getcwd(initial, MAX_DATA_SIZE);
+  int client_size;
+  rep_type = "A"; // set default type
 
   while (1)
   {
@@ -139,7 +146,6 @@ int main(int argc, char **argv)
       return -1;
     }
     pthread_join(child, NULL);
-
 
     // This is how to call the function in dir.c to get a listing of a directory.
     // It requires a file descriptor, so in your code you would pass in the file descriptor
@@ -201,11 +207,23 @@ int parse_cmd(char *cmd)
     return cdup(new_fd, initial);
     break;
   case TYPE:
+    return type(new_fd, args);
+    break;
   case MODE:
+    return mode(new_fd, args);
+    break;
   case STRU:
+    return stru(new_fd, args);
+    break;
   case RETR:
+    return retr(args);
+    break;
   case PASV:
+    return pasv();
+    break;
   case NLST:
+    return nlst();
+    break;
   default:
     break;
   }
@@ -215,8 +233,6 @@ int parse_cmd(char *cmd)
 
 int user(int fd, char *user)
 {
-  char msg[MAX_DATA_SIZE];
-
   if (user_in == 1)
   {
     send_string(fd, "already logged in\n"); // TODO: check error codes
@@ -245,7 +261,6 @@ int quit(int fd)
 // For security reasons you are not accept any CWD command that starts with ./ or ../ or contains ../ in it
 int cwd(int fd, char *directory)
 {
-  char msg[MAX_DATA_SIZE];
   char dir[MAX_DATA_SIZE];
 
   if (directory == NULL)
@@ -256,8 +271,9 @@ int cwd(int fd, char *directory)
   {
     strcpy(dir, directory);
     char *start = strtok(dir, "/\r\n");
-    //Directory inputted = '/'
-    if (start == NULL) {
+    // Directory inputted = '/'
+    if (start == NULL)
+    {
       send_string(fd, "Cannoto change directory to /\n");
       return 0;
     }
@@ -295,7 +311,6 @@ int cwd(int fd, char *directory)
 int cdup(int fd, char initial[])
 {
   char current[MAX_DATA_SIZE];
-  char msg[MAX_DATA_SIZE];
 
   getcwd(current, MAX_DATA_SIZE);
   if (strcmp(current, initial) == 0)
@@ -316,6 +331,84 @@ int cdup(int fd, char initial[])
 
   return 0;
 }
+
+int type(int fd, char *type)
+{
+  if (type == NULL)
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
+  else if (strcasecmp(type, "A") == 0)
+  {
+    rep_type = "A";
+    send_string(fd, "200 Command okay. Switching to ASCII.\n");
+    return 0;
+  }
+  else if (strcasecmp(type, "I") == 0)
+  {
+    rep_type = "I";
+    send_string(fd, "200 Command okay. Switching to raw binary.\n");
+    return 0;
+  }
+  else
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+  }
+  return 0;
+}
+
+int mode(int fd, char *mode)
+{
+  if (mode == NULL)
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
+  else if (strcasecmp(mode, "S") == 0)
+  {
+    send_string(fd, "200 Command okay. Mode set to stream mode.\n");
+    return 0;
+  }
+  else
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+  }
+  return 0;
+}
+
+int stru(int fd, char *structure)
+{
+  if (structure == NULL)
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
+  else if (strcasecmp(structure, "F") == 0)
+  {
+    send_string(fd, "200 Command okay. Data structure set to file.\n");
+    return 0;
+  }
+  else
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+  }
+  return 0;
+}
+
+int retr(char *file) {
+  return 0;
+}
+
+int pasv()
+{
+  return 0;
+}
+
+int nlst() {
+  return 0;
+}
+
 
 void send_string(int fd, char *msg)
 {
