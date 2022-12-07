@@ -29,10 +29,9 @@ int cdup(int fd, char initial[]);
 int type(int fd, char *type);
 int mode(int fd, char *mode);
 int stru(int fd, char *structure);
-int pasv(int fd, char* port);
+int pasv(int fd, char *port);
 int retr(int fd, char *file);
 int nlst();
-
 
 typedef enum
 {
@@ -169,6 +168,7 @@ void *handler(void *socket)
     {
       // TODO: what to do when invalid command?
       printf("invalid command, please enter a valid command\n");
+      send_string(new_fd, "500 Syntax error, command unrecognized.\n");
       continue;
     }
   }
@@ -264,6 +264,12 @@ int cwd(int fd, char *directory)
 {
   char dir[MAX_DATA_SIZE];
 
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
+
   if (directory == NULL)
   {
     send_string(fd, "Failed to change directory. Need to input directory.\n");
@@ -311,6 +317,11 @@ int cwd(int fd, char *directory)
 
 int cdup(int fd, char initial[])
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   char current[MAX_DATA_SIZE];
 
   getcwd(current, MAX_DATA_SIZE);
@@ -335,6 +346,11 @@ int cdup(int fd, char initial[])
 
 int type(int fd, char *type)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   if (type == NULL)
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -361,6 +377,11 @@ int type(int fd, char *type)
 
 int mode(int fd, char *mode)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   if (mode == NULL)
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -380,6 +401,11 @@ int mode(int fd, char *mode)
 
 int stru(int fd, char *structure)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   if (structure == NULL)
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -397,30 +423,40 @@ int stru(int fd, char *structure)
   return 0;
 }
 
-int retr(int fd, char *file) {
-  printf("hello");
-  if (file == NULL) {
+int retr(int fd, char *file)
+{
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
+  if (file == NULL)
+  {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
     return 0;
   }
 
-  if (pasv_fd == -1) {
+  if (pasv_fd == -1)
+  {
     send_string(fd, "425 Use PORT or PASV first.\n");
     return 0;
   }
 
-  if (rep_type == NULL) {
+  if (rep_type == NULL)
+  {
     send_string(fd, "425 Use TYPE first.\n");
     return 0;
   }
 
-  if (rep_type[0] == 'A') {
+  if (rep_type[0] == 'A')
+  {
     send_string(fd, "425 Use TYPE I first.\n");
     return 0;
   }
 
   FILE *fp = fopen(file, "rb");
-  if (fp == NULL) {
+  if (fp == NULL)
+  {
     send_string(fd, "550 File not found.\n");
     return 0;
   }
@@ -428,15 +464,18 @@ int retr(int fd, char *file) {
   send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
-  if (new_pasv_fd == -1) {
+  if (new_pasv_fd == -1)
+  {
     printf("error when accepting connection\n");
     return -1;
   }
 
   char buf[MAX_DATA_SIZE];
   int n;
-  while ((n = fread(buf, 1, MAX_DATA_SIZE, fp)) > 0) {
-    if (send(new_pasv_fd, buf, n, 0) == -1) {
+  while ((n = fread(buf, 1, MAX_DATA_SIZE, fp)) > 0)
+  {
+    if (send(new_pasv_fd, buf, n, 0) == -1)
+    {
       printf("error when sending data\n");
       return -1;
     }
@@ -453,51 +492,64 @@ int retr(int fd, char *file) {
 
 int pasv(int fd, char *args)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+  }
   // TODO: check syntax error 501
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
   //   return 0;
   // }
 
-    int port = rand() % 65535 + 1024;
-    pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (pasv_fd == -1) {
-      printf("error when creating socket\n");
-      return -1;
-    }
-    server.sin_family = AF_INET;
-    server.sin_port = htons(port);
-    server.sin_addr.s_addr = INADDR_ANY;
-    memset(server.sin_zero, '\0', sizeof(server.sin_zero));
-    if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
-      printf("error when binding socket\n");
-      return -1;
-    }
+  int port = rand() % 65535 + 1024;
+  pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (pasv_fd == -1)
+  {
+    printf("error when creating socket\n");
+    return -1;
+  }
+  server.sin_family = AF_INET;
+  server.sin_port = htons(port);
+  server.sin_addr.s_addr = INADDR_ANY;
+  memset(server.sin_zero, '\0', sizeof(server.sin_zero));
+  if (bind(pasv_fd, (struct sockaddr *)&server, sizeof(server)) == -1)
+  {
+    printf("error when binding socket\n");
+    return -1;
+  }
 
-    if (listen(pasv_fd, 1) == -1) {
-      printf("error when listening\n");
-      return -1;
-    }
+  if (listen(pasv_fd, 1) == -1)
+  {
+    printf("error when listening\n");
+    return -1;
+  }
 
-    char *ip = inet_ntoa(client.sin_addr);
-    printf("ip: %s\n", ip);
-    printf("port: %d\n", port);
+  char *ip = inet_ntoa(client.sin_addr);
+  printf("ip: %s\n", ip);
+  printf("port: %d\n", port);
 
-    char *msg = malloc(100);
-    sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
-    send_string(fd, msg);
-    free(msg);
+  char *msg = malloc(100);
+  sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
+  send_string(fd, msg);
+  free(msg);
   return 0;
 }
 
-int nlst(int fd, char* args) {
-  
+int nlst(int fd, char *args)
+{
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+  }
+
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
   //   return 0;
   // }
 
-  if (pasv_fd == -1) {
+  if (pasv_fd == -1)
+  {
     send_string(fd, "425 Use PORT or PASV first.\n");
     return 0;
   }
@@ -507,7 +559,8 @@ int nlst(int fd, char* args) {
   send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
-  if (new_pasv_fd == -1) {
+  if (new_pasv_fd == -1)
+  {
     printf("error when accepting connection\n");
     return -1;
   }
@@ -526,7 +579,6 @@ int nlst(int fd, char* args) {
 
   return 0;
 }
-
 
 void send_string(int fd, char *msg)
 {
