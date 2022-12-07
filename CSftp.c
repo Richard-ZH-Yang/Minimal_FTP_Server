@@ -23,7 +23,7 @@
 void send_string(int fd, char *msg);
 int parse_cmd(char *cmd);
 int user(int fd, char *username);
-int quit();
+int quit(int fd, char *args);
 int cwd(int fd, char *directory);
 int cdup(int fd, char initial[]);
 int type(int fd, char *type);
@@ -138,6 +138,7 @@ int main(int argc, char **argv)
       continue;
     }
     printf("server: got connection from %s\n", inet_ntoa(client.sin_addr));
+    send_string(new_fd, "220 connection ready.\n");
 
     pthread_t child;
     if (pthread_create(&child, NULL, handler, new_socket) < 0)
@@ -166,7 +167,6 @@ void *handler(void *socket)
   {
     if (parse_cmd(buf) == -1)
     {
-      // TODO: what to do when invalid command?
       printf("invalid command, please enter a valid command\n");
       send_string(new_fd, "500 Syntax error, command unrecognized.\n");
       continue;
@@ -199,7 +199,7 @@ int parse_cmd(char *cmd)
     return user(new_fd, args);
     break;
   case QUIT:
-    return quit(new_fd);
+    return quit(new_fd, args);
     break;
   case CWD:
     return cwd(new_fd, args);
@@ -234,13 +234,9 @@ int parse_cmd(char *cmd)
 
 int user(int fd, char *user)
 {
-  if (user_in == 1)
+  if (user == NULL)
   {
-    send_string(fd, "already logged in\n"); // TODO: check error codes
-  }
-  else if (user == NULL)
-  {
-    send_string(fd, "please input username\n");
+    send_string(fd, "501 Syntax Error in parameters or arguments. Please input username\n");
   }
   else
   {
@@ -251,8 +247,13 @@ int user(int fd, char *user)
   return 0;
 }
 
-int quit(int fd)
+int quit(int fd, char *args)
 {
+  if (args != NULL)
+  {
+    send_string(fd, "500 syntax error, too many arguments.\n");
+    return 0;
+  }
   send_string(fd, "221 Goodbye.\n");
   user_in = 0;
   close(new_fd);
@@ -281,12 +282,12 @@ int cwd(int fd, char *directory)
     // Directory inputted = '/'
     if (start == NULL)
     {
-      send_string(fd, "Cannoto change directory to /\n");
+      send_string(fd, "550 Requested action not taken. Cannot change directory to /\n");
       return 0;
     }
     else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
     {
-      send_string(fd, "Directory cannot start with ./ or ../\n");
+      send_string(fd, "550 Requested action not taken. Directory cannot start with ./ or ../\n");
       return 0;
     }
 
@@ -294,7 +295,7 @@ int cwd(int fd, char *directory)
     {
       if (strcmp(start, "..") == 0)
       {
-        send_string(fd, "Directory cannot contain ../\n");
+        send_string(fd, "550 Requested action not taken. Directory cannot contain ../\n");
         return 0;
       }
 
@@ -308,7 +309,7 @@ int cwd(int fd, char *directory)
     }
     else
     {
-      send_string(fd, "Directory changed successfully.\n");
+      send_string(fd, "250 Requested file action okay, completed. Directory changed successfully.\n");
     }
   }
 
@@ -333,7 +334,7 @@ int cdup(int fd, char initial[])
 
   if (chdir("..") == 0)
   {
-    send_string(fd, "Directly successfully changed back to parent directory.\n");
+    send_string(fd, "200 Command Ok. Directly successfully changed back to parent directory.\n");
     return 0;
   }
   else
@@ -368,6 +369,11 @@ int type(int fd, char *type)
     send_string(fd, "200 Command okay. Switching to raw binary.\n");
     return 0;
   }
+  else if (strcasecmp(type, "E") == 0 || strcasecmp(type, "L") == 0)
+  {
+    send_string(fd, "504 command not implemented for that representation type.\n");
+    return 0;
+  }
   else
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -392,6 +398,11 @@ int mode(int fd, char *mode)
     send_string(fd, "200 Command okay. Mode set to stream mode.\n");
     return 0;
   }
+  else if (strcasecmp(mode, "B") == 0 || strcasecmp(mode, "C") == 0)
+  {
+    send_string(fd, "504 command not implemented for that transmission mode.\n");
+    return 0;
+  }
   else
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -414,6 +425,11 @@ int stru(int fd, char *structure)
   else if (strcasecmp(structure, "F") == 0)
   {
     send_string(fd, "200 Command okay. Data structure set to file.\n");
+    return 0;
+  }
+  else if (strcasecmp(structure, "R") == 0 || strcasecmp(structure, "P") == 0)
+  {
+    send_string(fd, "504 command not implemented for that structure.\n");
     return 0;
   }
   else
@@ -495,6 +511,7 @@ int pasv(int fd, char *args)
   if (user_in == 0)
   {
     send_string(fd, "530 Not logged in.\n");
+    return 0;
   }
   // TODO: check syntax error 501
   // if (args != NULL) {
@@ -541,6 +558,7 @@ int nlst(int fd, char *args)
   if (user_in == 0)
   {
     send_string(fd, "530 Not logged in.\n");
+    return 0;
   }
 
   // if (args != NULL) {
