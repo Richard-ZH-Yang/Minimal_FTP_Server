@@ -29,8 +29,8 @@ int cdup(int fd, char initial[]);
 int type(int fd, char *type);
 int mode(int fd, char *mode);
 int stru(int fd, char *structure);
-int pasv();
-int retr(char *file);
+int pasv(char* port);
+int retr(int fd, char *file);
 int nlst();
 
 typedef enum
@@ -65,7 +65,7 @@ int portNum;
 int user_in = 0;
 char initial[MAX_DATA_SIZE];
 char *rep_type;
-
+int pasv_fd;
 void *inc_x()
 {
   printf("x increment finished\n");
@@ -216,10 +216,10 @@ int parse_cmd(char *cmd)
     return stru(new_fd, args);
     break;
   case RETR:
-    return retr(args);
+    return retr(new_fd, args);
     break;
   case PASV:
-    return pasv();
+    return pasv(args);
     break;
   case NLST:
     return nlst();
@@ -396,12 +396,56 @@ int stru(int fd, char *structure)
   return 0;
 }
 
-int retr(char *file) {
+int retr(int fd, char *file) {
+
   return 0;
 }
 
-int pasv()
+int pasv(char *args)
 {
+  // TODO: check syntax error 501
+
+  while (1) {
+    int port = rand() % 10000 + 10000;
+    int pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (pasv_fd == -1) {
+      printf("error when creating socket\n");
+      return -1;
+    }
+
+    struct sockaddr_in pasv_addr;
+    pasv_addr.sin_family = AF_INET;
+    pasv_addr.sin_port = htons(port);
+    pasv_addr.sin_addr.s_addr = INADDR_ANY;
+    memset(pasv_addr.sin_zero, '\0', sizeof(pasv_addr.sin_zero));
+
+    if (bind(pasv_fd, (struct sockaddr *) &pasv_addr, sizeof(pasv_addr)) == -1) {
+      printf("error when binding socket\n");
+      return -1;
+    }
+
+    if (listen(pasv_fd, 1) == -1) {
+      printf("error when listening\n");
+      return -1;
+    }
+
+    struct sockaddr_in client_addr;
+    socklen_t addr_size = sizeof(client_addr);
+    int pasv_new_fd = accept(pasv_fd, (struct sockaddr *) &client_addr, &addr_size);
+    if (pasv_new_fd == -1) {
+      printf("error when accepting\n");
+      return -1;
+    }
+
+    char *ip = inet_ntoa(client_addr.sin_addr);
+    printf("ip: %s\n", ip);
+    printf("port: %d\n", port);
+
+    char *msg = malloc(100);
+    sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
+    send_string(new_fd, msg);
+    free(msg);
+  }
   return 0;
 }
 

@@ -3,3 +3,6 @@ CSftp
 CSftp.o
 dir.o
 usage.o
+
+# test folder
+test
