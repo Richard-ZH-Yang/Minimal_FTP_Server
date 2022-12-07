@@ -454,6 +454,10 @@ int retr(int fd, char *file) {
 int pasv(int fd, char *args)
 {
   // TODO: check syntax error 501
+  if (args != NULL) {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
 
     int port = rand() % 10000 + 1024;
     pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -475,9 +479,8 @@ int pasv(int fd, char *args)
       return -1;
     }
 
-    struct sockaddr_in client_addr;
-    socklen_t addr_size = sizeof(client_addr);
-    int pasv_new_fd = accept(pasv_fd, (struct sockaddr *) &client_addr, &addr_size);
+    client_size = sizeof(client);
+    int pasv_new_fd = accept(pasv_fd, (struct sockaddr *) &client, &sizeof(client));
         printf("__LINE488__\n");
     if (pasv_new_fd == -1) {
       printf("error when accepting\n");
