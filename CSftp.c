@@ -397,7 +397,55 @@ int stru(int fd, char *structure)
 }
 
 int retr(int fd, char *file) {
+  if (file == NULL) {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
 
+  if (pasv_fd == -1) {
+    send_string(fd, "425 Use PORT or PASV first.\n");
+    return 0;
+  }
+
+  if (rep_type == NULL) {
+    send_string(fd, "425 Use TYPE first.\n");
+    return 0;
+  }
+
+  if (rep_type[0] == 'A') {
+    send_string(fd, "425 Use TYPE I first.\n");
+    return 0;
+  }
+
+  FILE *fp = fopen(file, "rb");
+  if (fp == NULL) {
+    send_string(fd, "550 File not found.\n");
+    return 0;
+  }
+
+  send_string(fd, "150 File status okay; about to open data connection.\n");
+
+  int new_pasv_fd = accept(pasv_fd, NULL, NULL);
+  if (new_pasv_fd == -1) {
+    printf("error when accepting connection\n");
+    return -1;
+  }
+
+  char buf[MAX_DATA_SIZE];
+  int n;
+  while ((n = fread(buf, 1, MAX_DATA_SIZE, fp)) > 0) {
+    if (send(new_pasv_fd, buf, n, 0) == -1) {
+      printf("error when sending data\n");
+      return -1;
+    }
+  }
+
+  fclose(fp);
+  close(new_pasv_fd);
+  close(pasv_fd);
+  pasv_fd = -1;
+
+  send_string(fd, "226 Closing data connection. Requested file action successful.\n");
   return 0;
 }
 
