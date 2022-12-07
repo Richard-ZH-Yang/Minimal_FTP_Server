@@ -223,7 +223,7 @@ int parse_cmd(char *cmd)
     return pasv(new_fd, args);
     break;
   case NLST:
-    return nlst();
+    return nlst(new_fd, args);
     break;
   default:
     break;
@@ -454,12 +454,12 @@ int retr(int fd, char *file) {
 int pasv(int fd, char *args)
 {
   // TODO: check syntax error 501
-  if (args != NULL) {
-    send_string(fd, "501 Syntax error in parameters or arguments.\n");
-    return 0;
-  }
+  // if (args != NULL) {
+  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
+  //   return 0;
+  // }
 
-    int port = rand() % 10000 + 1024;
+    int port = rand() % 65535 + 1024;
     pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (pasv_fd == -1) {
       printf("error when creating socket\n");
@@ -479,17 +479,7 @@ int pasv(int fd, char *args)
       return -1;
     }
 
-    client_size = sizeof(client);
-    int pasv_new_fd = accept(pasv_fd, (struct sockaddr *) &client, &sizeof(client));
-        printf("__LINE488__\n");
-    if (pasv_new_fd == -1) {
-      printf("error when accepting\n");
-      return -1;
-    }
-    pasv_fd = pasv_new_fd;
-    printf("__LINE502__\n");
-
-    char *ip = inet_ntoa(client_addr.sin_addr);
+    char *ip = inet_ntoa(client.sin_addr);
     printf("ip: %s\n", ip);
     printf("port: %d\n", port);
 
@@ -497,80 +487,22 @@ int pasv(int fd, char *args)
     sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
     send_string(fd, msg);
     free(msg);
-    return 0;
   return 0;
 }
 
-// int pasv(int fd, char *args)
-// {
-
-//   if (args != NULL)
-//   {
-//     send_string(fd, "501 Syntax error in parameters or arguments.\n");
-//     return 0;
-//   }
-
-//   if (pasv_fd != -1)
-//   {
-//     close(pasv_fd);
-//     pasv_fd = -1;
-//   }
-
-//   int port = rand() % 10000 + 1024;
-//   pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
-//   if (pasv_fd == -1)
-//   {
-//     printf("error when creating socket\n");
-//     return -1;
-//   }
-//   server.sin_family = AF_INET;
-//   server.sin_port = htons(port);
-//   server.sin_addr.s_addr = INADDR_ANY;
-//   memset(server.sin_zero, '\0', sizeof(server.sin_zero));
-//   if (bind(pasv_fd, (struct sockaddr *)&server, sizeof(server)) == -1)
-//   {
-//     printf("error when binding socket\n");
-//     return -1;
-//   }
-
-//   if (listen(pasv_fd, 1) == -1)
-//   {
-//     printf("error when listening\n");
-//     return -1;
-//   }
-
-//   char *ip = inet_ntoa(server.sin_addr);
-//   printf("ip: %s\n", ip);
-//   printf("port: %d\n", port);
-
-//   char *msg = malloc(100);
-//   sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
-//   send_string(fd, msg);
-//   free(msg);
-//   return 0;
-// }
-
 int nlst(int fd, char* args) {
   
-  if (args != NULL) {
-    send_string(fd, "501 Syntax error in parameters or arguments.\n");
-    return 0;
-  }
+  // if (args != NULL) {
+  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
+  //   return 0;
+  // }
 
   if (pasv_fd == -1) {
     send_string(fd, "425 Use PORT or PASV first.\n");
     return 0;
   }
 
-  if (rep_type == NULL) {
-    send_string(fd, "425 Use TYPE first.\n");
-    return 0;
-  }
-
-  if (rep_type[0] == 'A') {
-    send_string(fd, "425 Use TYPE I first.\n");
-    return 0;
-  }
+  // TODO: check if use type first
 
   send_string(fd, "150 File status okay; about to open data connection.\n");
 
