@@ -517,18 +517,8 @@ int nlst(int fd, char* args) {
   send_string(fd, msg);
   free(msg);
 
-  DIR *dir;
-  struct dirent *ent;
-  if ((dir = opendir (".")) != NULL) {
-    while ((ent = readdir (dir)) != NULL) {
-      send_string(new_pasv_fd, ent->d_name);
-      send_string(new_pasv_fd, "\n");
-    }
-    closedir (dir);
-  } else {
-    printf("error when opening directory\n");
-    return -1;
-  }
+  // TODO: make sure the file is in the current directory
+  listFiles(new_pasv_fd, ".");
 
   close(new_pasv_fd);
   close(pasv_fd);
