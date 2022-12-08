@@ -15,11 +15,9 @@
 #include <pthread.h>
 
 #define BACKLOG 10 // how many pending connetions queue will hold
-#define MAX_DATA_SIZE 256
+#define MAX_DATA_SIZE 256 // the maximum length for data entries
 
-// Here is an example of how to use the above function. It also shows
-// one how to get the arguments passed on the command line.
-/* this function is run by the second thread */
+// list of functions
 void send_string(int fd, char *msg);
 int parse_cmd(char *cmd);
 int user(int fd, char *username);
@@ -31,7 +29,10 @@ int mode(int fd, char *mode);
 int stru(int fd, char *structure);
 int pasv(int fd, char *port);
 int retr(int fd, char *file);
-int nlst();
+int nlst(int fd, char *file);
+void *handler(void *socket);
+void setCurrPath(char* path);
+void getRightPath (char* result, char* path);
 
 typedef enum
 {
@@ -58,33 +59,18 @@ const char *command_str[] = {"USER",
                              "PASV",
                              "NLST"};
 
-int sockfd, new_fd, *new_socket;
+int sockfd, new_fd, *new_socket, pasv_fd;
 struct sockaddr_in server, client;
 char buf[MAX_DATA_SIZE];
 int portNum;
 int user_in = 0;
 char initial[MAX_DATA_SIZE];
+char *curr_path;
 char *rep_type;
-int pasv_fd;
-void *inc_x()
-{
-  printf("x increment finished\n");
-  return NULL;
-}
-
-void *handler(void *socket);
 
 int main(int argc, char **argv)
 {
-
-  // This is some sample code feel free to delete it
-  // This is the main program for the thread version of nc
-
-  // int i;
-  // pthread_t child;
-  // pthread_create(&child, NULL, inc_x, NULL);
-
-  // Check the command line arguments
+  // arg count has to be 2
   if (argc != 2)
   {
     usage(argv[0]);
@@ -93,6 +79,7 @@ int main(int argc, char **argv)
 
   portNum = atoi(argv[1]);
 
+  // valid port number
   if (portNum < 1024 || portNum > 65535)
   {
     usage(argv[0]);
@@ -126,6 +113,8 @@ int main(int argc, char **argv)
   }
 
   getcwd(initial, MAX_DATA_SIZE);
+  curr_path = malloc(MAX_DATA_SIZE);
+  curr_path = initial;
   int client_size;
   rep_type = "A"; // set default type
 
@@ -134,7 +123,7 @@ int main(int argc, char **argv)
     client_size = sizeof(client);
     if ((new_fd = accept(sockfd, (struct sockaddr *)&client, &client_size)) == -1)
     {
-      perror("accept error");
+      printf("451 Requested action aborted. Local error in processing.\n");
       continue;
     }
     printf("server: got connection from %s\n", inet_ntoa(client.sin_addr));
@@ -147,17 +136,12 @@ int main(int argc, char **argv)
       return -1;
     }
     pthread_join(child, NULL);
-
-    // This is how to call the function in dir.c to get a listing of a directory.
-    // It requires a file descriptor, so in your code you would pass in the file descriptor
-    // returned for the ftp server's data connection
-
-    printf("Printed %d directory entries\n", listFiles(1, "."));
   }
   return 0;
 
 }
 
+// EFFECTS: recive command from client and perform functionalities based on parsed command
 void *handler(void *socket)
 {
   printf("thread created!\n");
@@ -179,10 +163,16 @@ int parse_cmd(char *cmd)
 {
   char *args;
   char *com;
+  char *line;
   FTP_CMD command;
 
-  com = strtok(cmd, " \r\n");
-  args = strtok(NULL, " \r\n");
+  line = strtok(cmd, "\r\n");
+  com = strtok(line, " ");
+  args = strtok(NULL, " ");
+  if (args != NULL && strtok(NULL, " ") != NULL) {
+    send_string(new_fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
 
   printf("command %s\n", com);
 
@@ -257,13 +247,13 @@ int quit(int fd)
   close(new_fd);
   close(pasv_fd);
   close(new_socket);
-  return -1;
+  free(curr_path);
+  return 0;
 }
 
 // For security reasons you are not accept any CWD command that starts with ./ or ../ or contains ../ in it
 int cwd(int fd, char *directory)
 {
-  char dir[MAX_DATA_SIZE];
 
   if (user_in == 0)
   {
@@ -273,44 +263,18 @@ int cwd(int fd, char *directory)
 
   if (directory == NULL)
   {
-    send_string(fd, "Failed to change directory. Need to input directory.\n");
+    send_string(fd, "501 Invalid argument. Need to input directory.\n");
   }
   else
   {
-    strcpy(dir, directory);
-    char *start = strtok(dir, "/\r\n");
-    // Directory inputted = '/'
-    if (start == NULL)
-    {
-      send_string(fd, "550 Requested action not taken. Cannot change directory to /\n");
+
+    setCurrPath(directory);
+    if (access(curr_path, F_OK) == -1) {
+      send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
       return 0;
     }
-    else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
-    {
-      send_string(fd, "550 Requested action not taken. Directory cannot start with ./ or ../\n");
-      return 0;
-    }
+    send_string(fd, "250 Requested file action okay, completed. Directory changed successfully.\n");
 
-    while (start != NULL)
-    {
-      if (strcmp(start, "..") == 0)
-      {
-        send_string(fd, "550 Requested action not taken. Directory cannot contain ../\n");
-        return 0;
-      }
-
-      start = strtok(NULL, "/\r\n");
-    }
-
-    if (chdir(dir) == -1)
-    {
-      send_string(fd, "Failed to change directory.\n");
-      return 0;
-    }
-    else
-    {
-      send_string(fd, "250 Requested file action okay, completed. Directory changed successfully.\n");
-    }
   }
 
   return 0;
@@ -320,27 +284,18 @@ int cdup(int fd, char initial[])
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
-    return 0;
-  }
-  char current[MAX_DATA_SIZE];
-
-  getcwd(current, MAX_DATA_SIZE);
-  if (strcmp(current, initial) == 0)
-  {
-    send_string(fd, "Cannot process this command from parent directory.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
 
-  if (chdir("..") == 0)
+  if (strcmp(curr_path, initial) == 0)
   {
-    send_string(fd, "200 Command Ok. Directly successfully changed back to parent directory.\n");
+    send_string(fd, "550 Cannot process this command from parent directory.\n");
     return 0;
   }
-  else
-  {
-    send_string(fd, "Failed to change directory.\n");
-  }
+
+  strcpy(curr_path, initial);
+  send_string(fd, "200 Command Ok. Directly successfully changed back to parent directory.\n");
 
   return 0;
 }
@@ -349,7 +304,7 @@ int type(int fd, char *type)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (type == NULL)
@@ -385,7 +340,7 @@ int mode(int fd, char *mode)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (mode == NULL)
@@ -414,7 +369,7 @@ int stru(int fd, char *structure)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (structure == NULL)
@@ -444,7 +399,7 @@ int retr(int fd, char *file)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (file == NULL)
@@ -455,27 +410,28 @@ int retr(int fd, char *file)
 
   if (pasv_fd == -1)
   {
-    send_string(fd, "425 Use PORT or PASV first.\n");
+    send_string(fd, "425 Use PASV first.\n");
     return 0;
   }
 
-  if (strcmp(rep_type, "A") != 0) {
-
-    send_string(fd, "425 Use TYPE first.\n");
+  char* currFile = malloc(MAX_DATA_SIZE);
+  getRightPath(currFile, file);
+  if (access(currFile, F_OK) == -1) {
+    send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
     return 0;
   }
 
-  FILE *fp = fopen(file, "rb");
+  FILE *fp = fopen(currFile, "rb");
   if (!fp) {
     send_string(fd, "550 File not found.\n");
     return 0;
   }
 
-  send_string(fd, "150 Opening data connection.\n");
+  send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
   if (new_pasv_fd == -1) {
-    printf("Error when accepting connection\n");
+    printf("451 Requested action aborted. Local error in processing.\n");
     return 0;
 
   }
@@ -490,6 +446,7 @@ int retr(int fd, char *file)
     }
   }
 
+  free(currFile);
   fclose(fp);
   close(new_pasv_fd);
   close(pasv_fd);
@@ -505,32 +462,32 @@ int pasv(int fd, char* args)
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
     return 0;
   }
+
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
 
-    pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (pasv_fd == -1) {
-      printf("Error when creating socket\n");
-      return 0;
-    }
-    int port = rand() % 65535 + 1024;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_family = AF_INET;
-    server.sin_port = htons(port);
-    memset(server.sin_zero, '\0', sizeof(server.sin_zero));
-    if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
-      printf("Error when binding socket\n");
-      return 0;
-    }
+  pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (pasv_fd == -1) {
+    printf("Error when creating socket\n");
+    return 0;
+  }
+  int port = rand() % 65535 + 1024;
+  server.sin_addr.s_addr = INADDR_ANY;
+  server.sin_family = AF_INET;
+  server.sin_port = htons(port);
+  memset(server.sin_zero, '\0', sizeof(server.sin_zero));
+  if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
+    printf("Error when binding socket\n");
+    return 0;
+  }
 
-    if (listen(pasv_fd, 1) == -1) {
-      printf("Error when listening\n");
-      return 0;
-    }
-
+  if (listen(pasv_fd, 1) == -1) {
+    printf("Error when listening\n");
+    return 0;
+  }
 
   char *ip = inet_ntoa(client.sin_addr);
   printf("ip: %s\n", ip);
@@ -548,7 +505,7 @@ int pasv(int fd, char* args)
   return 0;
 }
 
-int nlst(int fd, char *args)
+int nlst(int fd, char *file)
 {
   if (user_in == 0)
   {
@@ -556,14 +513,8 @@ int nlst(int fd, char *args)
     return 0;
   }
 
-  // if (args != NULL) {
-  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
-  //   return 0;
-  // }
-
   if (pasv_fd == -1) {
     send_string(fd, "425 Need call PASV first.\n");
-
     return 0;
   }
 
@@ -571,13 +522,19 @@ int nlst(int fd, char *args)
     send_string(fd, "425 Need change to TYPE A first.\n");
     return 0;
   }
-  
-  send_string(fd, "150 Opening data connection.\n");
+  printf("%s\n", curr_path);
+  char* currDir = malloc(MAX_DATA_SIZE);
+  getRightPath(currDir, file);
+  if (access(currDir, F_OK) == -1) {
+    send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
+    return 0;
+  }
+
+  send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
-
   if (new_pasv_fd == -1) {
-    printf("Error when accepting connection\n");
+    printf("451 Requested action aborted. Local error in processing.\n");
     return 0;
 
   }
@@ -587,12 +544,12 @@ int nlst(int fd, char *args)
   send_string(fd, msg);
   free(msg);
 
-  // TODO: make sure the file is in the current directory
-  if (listFiles(new_pasv_fd, file) == -1) {
+  if (listFiles(new_pasv_fd, currDir) == -1) {
     sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
     return 0;
   }
 
+  free(currDir);
   close(new_pasv_fd);
   close(pasv_fd);
   pasv_fd = -1;
@@ -600,10 +557,50 @@ int nlst(int fd, char *args)
   return 0;
 }
 
+// EFFECTS: send the message to the file descriptor 
 void send_string(int fd, char *msg)
 {
   if (send(fd, msg, strlen(msg), 0) == -1)
   {
     printf("error when sending message\n");
   }
+}
+
+// EFFECTS: set curr_path in a abosulte path format e.g. /home/usr/......./a3_rzhyang_yliu8912/path
+void setCurrPath(char* path) {
+  // reset curr_path if it's not valid
+  if (access(curr_path, F_OK) == -1) {
+    strcpy(curr_path, initial);
+  }
+
+  if (path == NULL || strlen(path) == 1 && path[0] == '.') {
+    return;
+  } else if (strlen(path) == 0) {
+    strcpy(curr_path, initial);
+  } else if (strlen(path) > 0 && path[0] == '/') {
+    strcpy(curr_path, initial);
+    strcat(curr_path, path);
+  } else {
+    strcpy(curr_path, initial);
+    strcat(curr_path, "/");
+    strcat(curr_path, path);
+  }
+
+}
+
+// EFFECTS: set result for a file or directory based on curr_path and path
+void getRightPath (char* result, char* path) {
+  if (path == NULL || strlen(path) == 1 && path[0] == '.') {
+    strcpy(result, curr_path);
+  } else if (strlen(path) == 0) {
+    strcpy(result, curr_path);
+  } else if (strlen(path) > 0 && path[0] == '/') {
+    strcpy(result, initial);
+    strcat(result, path);
+  } else {
+    strcpy(result, initial);
+    strcat(result, "/");
+    strcat(result, path);
+  }
+
 }
