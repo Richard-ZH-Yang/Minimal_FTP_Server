@@ -153,8 +153,9 @@ int main(int argc, char **argv)
     // returned for the ftp server's data connection
 
     printf("Printed %d directory entries\n", listFiles(1, "."));
-    return 0;
   }
+  return 0;
+
 }
 
 void *handler(void *socket)
@@ -251,9 +252,11 @@ int user(int fd, char *user)
 
 int quit(int fd)
 {
-  send_string(fd, "221 Goodbye.\n");
   user_in = 0;
+  send_string(fd, "221 Goodbye.\n");
   close(new_fd);
+  close(pasv_fd);
+  close(new_socket);
   return -1;
 }
 
@@ -436,6 +439,7 @@ int stru(int fd, char *structure)
   return 0;
 }
 
+
 int retr(int fd, char *file)
 {
   if (user_in == 0)
@@ -455,42 +459,34 @@ int retr(int fd, char *file)
     return 0;
   }
 
-  if (rep_type == NULL)
-  {
+  if (strcmp(rep_type, "A") != 0) {
+
     send_string(fd, "425 Use TYPE first.\n");
     return 0;
   }
 
-  if (rep_type[0] == 'A')
-  {
-    send_string(fd, "425 Use TYPE I first.\n");
-    return 0;
-  }
-
   FILE *fp = fopen(file, "rb");
-  if (fp == NULL)
-  {
+  if (!fp) {
     send_string(fd, "550 File not found.\n");
     return 0;
   }
 
-  send_string(fd, "150 File status okay; about to open data connection.\n");
+  send_string(fd, "150 Opening data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
-  if (new_pasv_fd == -1)
-  {
-    printf("error when accepting connection\n");
-    return -1;
+  if (new_pasv_fd == -1) {
+    printf("Error when accepting connection\n");
+    return 0;
+
   }
 
   char buf[MAX_DATA_SIZE];
   int n;
-  while ((n = fread(buf, 1, MAX_DATA_SIZE, fp)) > 0)
-  {
-    if (send(new_pasv_fd, buf, n, 0) == -1)
-    {
-      printf("error when sending data\n");
-      return -1;
+  while ((n = fread(buf, 1, MAX_DATA_SIZE, fp)) > 0) {
+    if (send(new_pasv_fd, buf, n, 0) == -1) {
+      printf("Error when sending data\n");
+      return 0;
+
     }
   }
 
@@ -499,52 +495,54 @@ int retr(int fd, char *file)
   close(pasv_fd);
   pasv_fd = -1;
 
-  send_string(fd, "226 Closing data connection. Requested file action successful.\n");
+  send_string(fd, "226 Closing data connection. Requested file action success.\n");
   return 0;
 }
 
-int pasv(int fd, char *args)
+int pasv(int fd, char* args)
 {
+  if (args != NULL) {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
   if (user_in == 0)
   {
     send_string(fd, "530 Not logged in.\n");
     return 0;
   }
-  // TODO: check syntax error 501
-  // if (args != NULL) {
-  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
-  //   return 0;
-  // }
 
-  int port = rand() % 65535 + 1024;
-  pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (pasv_fd == -1)
-  {
-    printf("error when creating socket\n");
-    return -1;
-  }
-  server.sin_family = AF_INET;
-  server.sin_port = htons(port);
-  server.sin_addr.s_addr = INADDR_ANY;
-  memset(server.sin_zero, '\0', sizeof(server.sin_zero));
-  if (bind(pasv_fd, (struct sockaddr *)&server, sizeof(server)) == -1)
-  {
-    printf("error when binding socket\n");
-    return -1;
-  }
+    pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (pasv_fd == -1) {
+      printf("Error when creating socket\n");
+      return 0;
+    }
+    int port = rand() % 65535 + 1024;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_family = AF_INET;
+    server.sin_port = htons(port);
+    memset(server.sin_zero, '\0', sizeof(server.sin_zero));
+    if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
+      printf("Error when binding socket\n");
+      return 0;
+    }
 
-  if (listen(pasv_fd, 1) == -1)
-  {
-    printf("error when listening\n");
-    return -1;
-  }
+    if (listen(pasv_fd, 1) == -1) {
+      printf("Error when listening\n");
+      return 0;
+    }
+
 
   char *ip = inet_ntoa(client.sin_addr);
   printf("ip: %s\n", ip);
   printf("port: %d\n", port);
 
   char *msg = malloc(100);
-  sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
+  int IPNum[4] = {0,0,0,0};
+  if (sscanf(ip, "%d.%d.%d.%d", &IPNum[0], &IPNum[1], &IPNum[2], &IPNum[3]) != 4){
+    printf("Error when parsing ip address\n");
+    return 0;
+  }
+  sprintf(msg, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\n",IPNum[0],IPNum[1],IPNum[2],IPNum[3], port / 256, port % 256);
   send_string(fd, msg);
   free(msg);
   return 0;
@@ -563,30 +561,37 @@ int nlst(int fd, char *args)
   //   return 0;
   // }
 
-  if (pasv_fd == -1)
-  {
-    send_string(fd, "425 Use PORT or PASV first.\n");
+  if (pasv_fd == -1) {
+    send_string(fd, "425 Need call PASV first.\n");
+
     return 0;
   }
 
-  // TODO: check if use type first
-
-  send_string(fd, "150 File status okay; about to open data connection.\n");
+  if (strcmp(rep_type, "A") != 0) {
+    send_string(fd, "425 Need change to TYPE A first.\n");
+    return 0;
+  }
+  
+  send_string(fd, "150 Opening data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
-  if (new_pasv_fd == -1)
-  {
-    printf("error when accepting connection\n");
-    return -1;
+
+  if (new_pasv_fd == -1) {
+    printf("Error when accepting connection\n");
+    return 0;
+
   }
 
   char *msg = malloc(100);
-  sprintf(msg, "226 Closing data connection. Requested file action successful.\n");
+  sprintf(msg, "226 Closing data connection. Requested file action success.\n");
   send_string(fd, msg);
   free(msg);
 
   // TODO: make sure the file is in the current directory
-  listFiles(new_pasv_fd, ".");
+  if (listFiles(new_pasv_fd, file) == -1) {
+    sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
+    return 0;
+  }
 
   close(new_pasv_fd);
   close(pasv_fd);
