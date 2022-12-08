@@ -238,10 +238,12 @@ int user(int fd, char *user)
   {
     send_string(fd, "501 Syntax Error in parameters or arguments. Please input username\n");
   }
-  else
+  else if (strcmp(user, "cs317") == 0)
   {
     user_in = 1;
     send_string(fd, "230 User logged in, proceed.\n");
+  } else {
+    send_string(fd, "530 Not logged in.\n");
   }
 
   return 0;
