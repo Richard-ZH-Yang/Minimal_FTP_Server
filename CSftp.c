@@ -31,7 +31,7 @@ int mode(int fd, char *mode);
 int stru(int fd, char *structure);
 int pasv(int fd, char *port);
 int retr(int fd, char *file);
-int nlst();
+int nlst(int fd, char *file);
 
 typedef enum
 {
@@ -64,6 +64,7 @@ char buf[MAX_DATA_SIZE];
 int portNum;
 int user_in = 0;
 char initial[MAX_DATA_SIZE];
+char *curr_path;
 char *rep_type;
 int pasv_fd;
 void *inc_x()
@@ -73,6 +74,8 @@ void *inc_x()
 }
 
 void *handler(void *socket);
+
+void setCurrPath(char* path);
 
 int main(int argc, char **argv)
 {
@@ -92,6 +95,7 @@ int main(int argc, char **argv)
   }
 
   portNum = atoi(argv[1]);
+  curr_path = malloc(MAX_DATA_SIZE);
 
   if (portNum < 1024 || portNum > 65535)
   {
@@ -179,10 +183,16 @@ int parse_cmd(char *cmd)
 {
   char *args;
   char *com;
+  char *line;
   FTP_CMD command;
 
-  com = strtok(cmd, " \r\n");
-  args = strtok(NULL, " \r\n");
+  line = strtok(cmd, "\r\n");
+  com = strtok(line, " ");
+  args = strtok(NULL, " ");
+  if (args != NULL && strtok(NULL, " ") != NULL) {
+    send_string(new_fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
 
   printf("command %s\n", com);
 
@@ -257,13 +267,13 @@ int quit(int fd)
   close(new_fd);
   close(pasv_fd);
   close(new_socket);
-  return -1;
+  free(curr_path);
+  return 0;
 }
 
 // For security reasons you are not accept any CWD command that starts with ./ or ../ or contains ../ in it
 int cwd(int fd, char *directory)
 {
-  char dir[MAX_DATA_SIZE];
 
   if (user_in == 0)
   {
@@ -273,44 +283,42 @@ int cwd(int fd, char *directory)
 
   if (directory == NULL)
   {
-    send_string(fd, "Failed to change directory. Need to input directory.\n");
+    send_string(fd, "501 Invalid argument. Need to input directory.\n");
   }
   else
   {
-    strcpy(dir, directory);
-    char *start = strtok(dir, "/\r\n");
-    // Directory inputted = '/'
-    if (start == NULL)
-    {
-      send_string(fd, "550 Requested action not taken. Cannot change directory to /\n");
+    // strcpy(dir, directory);
+    // char *start = strtok(dir, "/\r\n");
+    // // Directory inputted = '/'
+    // if (start == NULL)
+    // {
+    //   send_string(fd, "550 Requested action not taken. Cannot change directory to /\n");
+    //   return 0;
+    // }
+    // else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
+    // {
+    //   send_string(fd, "550 Requested action not taken. Directory cannot start with ./ or ../\n");
+    //   return 0;
+    // }
+
+    // while (start != NULL)
+    // {
+    //   if (strcmp(start, "..") == 0)
+    //   {
+    //     send_string(fd, "550 Requested action not taken. Directory cannot contain ../\n");
+    //     return 0;
+    //   }
+
+    //   start = strtok(NULL, "/\r\n");
+    // }
+
+    setCurrPath(directory);
+    if (access(curr_path, F_OK) == -1) {
+      send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
       return 0;
     }
-    else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
-    {
-      send_string(fd, "550 Requested action not taken. Directory cannot start with ./ or ../\n");
-      return 0;
-    }
+    send_string(fd, "250 Requested file action okay, completed. Directory changed successfully.\n");
 
-    while (start != NULL)
-    {
-      if (strcmp(start, "..") == 0)
-      {
-        send_string(fd, "550 Requested action not taken. Directory cannot contain ../\n");
-        return 0;
-      }
-
-      start = strtok(NULL, "/\r\n");
-    }
-
-    if (chdir(dir) == -1)
-    {
-      send_string(fd, "Failed to change directory.\n");
-      return 0;
-    }
-    else
-    {
-      send_string(fd, "250 Requested file action okay, completed. Directory changed successfully.\n");
-    }
   }
 
   return 0;
@@ -323,24 +331,15 @@ int cdup(int fd, char initial[])
     send_string(fd, "530 Not logged in.\n");
     return 0;
   }
-  char current[MAX_DATA_SIZE];
 
-  getcwd(current, MAX_DATA_SIZE);
-  if (strcmp(current, initial) == 0)
+  if (strcmp(curr_path, initial) == 0)
   {
     send_string(fd, "Cannot process this command from parent directory.\n");
     return 0;
   }
 
-  if (chdir("..") == 0)
-  {
-    send_string(fd, "200 Command Ok. Directly successfully changed back to parent directory.\n");
-    return 0;
-  }
-  else
-  {
-    send_string(fd, "Failed to change directory.\n");
-  }
+  strcpy(curr_path, initial);
+  send_string(fd, "200 Command Ok. Directly successfully changed back to parent directory.\n");
 
   return 0;
 }
@@ -455,13 +454,19 @@ int retr(int fd, char *file)
 
   if (pasv_fd == -1)
   {
-    send_string(fd, "425 Use PORT or PASV first.\n");
+    send_string(fd, "425 Use PASV first.\n");
     return 0;
   }
 
   if (strcmp(rep_type, "A") != 0) {
 
     send_string(fd, "425 Use TYPE first.\n");
+    return 0;
+  }
+
+  setCurrPath(file);
+  if (access(curr_path, F_OK) == -1) {
+    send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
     return 0;
   }
 
@@ -505,6 +510,7 @@ int pasv(int fd, char* args)
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
     return 0;
   }
+
   if (user_in == 0)
   {
     send_string(fd, "530 Not logged in.\n");
@@ -548,7 +554,7 @@ int pasv(int fd, char* args)
   return 0;
 }
 
-int nlst(int fd, char *args)
+int nlst(int fd, char *file)
 {
   if (user_in == 0)
   {
@@ -556,14 +562,8 @@ int nlst(int fd, char *args)
     return 0;
   }
 
-  // if (args != NULL) {
-  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
-  //   return 0;
-  // }
-
   if (pasv_fd == -1) {
     send_string(fd, "425 Need call PASV first.\n");
-
     return 0;
   }
 
@@ -571,7 +571,14 @@ int nlst(int fd, char *args)
     send_string(fd, "425 Need change to TYPE A first.\n");
     return 0;
   }
-  
+
+
+  setCurrPath(file);
+  if (access(curr_path, F_OK) == -1) {
+    send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
+    return 0;
+  }
+
   send_string(fd, "150 Opening data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
@@ -588,7 +595,7 @@ int nlst(int fd, char *args)
   free(msg);
 
   // TODO: make sure the file is in the current directory
-  if (listFiles(new_pasv_fd, file) == -1) {
+  if (listFiles(new_pasv_fd, curr_path) == -1) {
     sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
     return 0;
   }
@@ -606,4 +613,27 @@ void send_string(int fd, char *msg)
   {
     printf("error when sending message\n");
   }
+}
+
+// EFFECTS: get a path in a abosulte path format e.g. /home/usr/......./a3_rzhyang_yliu8912/path
+void setCurrPath(char* path) {
+  // reset curr_path if it's not valid
+  if (access(curr_path, F_OK) == -1) {
+    strcpy(curr_path, initial);
+  }
+
+  if (path == NULL || strlen(path) == 1 && path[0] == '.') {
+    return;
+  } else if (strlen(path) == 0) {
+    strcpy(curr_path, initial);
+  } else if (strlen(path) > 0 && path[0] == '/') {
+    strcpy(curr_path, initial);
+    strcat(curr_path, path);
+  } else {
+    strcpy(curr_path, initial);
+    strcat(curr_path, "/");
+    strcat(curr_path, path);
+  }
+
+
 }
