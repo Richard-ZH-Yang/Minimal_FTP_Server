@@ -58,7 +58,7 @@ const char *command_str[] = {"USER",
                              "PASV",
                              "NLST"};
 
-int sockfd, new_fd, *new_socket;
+int sockfd, new_fd, *new_socket, pasv_fd;
 struct sockaddr_in server, client;
 char buf[MAX_DATA_SIZE];
 int portNum;
@@ -66,7 +66,6 @@ int user_in = 0;
 char initial[MAX_DATA_SIZE];
 char *curr_path;
 char *rep_type;
-int pasv_fd;
 void *inc_x()
 {
   printf("x increment finished\n");
@@ -76,6 +75,8 @@ void *inc_x()
 void *handler(void *socket);
 
 void setCurrPath(char* path);
+
+void getRightPath (char* result, char* path);
 
 int main(int argc, char **argv)
 {
@@ -95,7 +96,6 @@ int main(int argc, char **argv)
   }
 
   portNum = atoi(argv[1]);
-  curr_path = malloc(MAX_DATA_SIZE);
 
   if (portNum < 1024 || portNum > 65535)
   {
@@ -130,6 +130,8 @@ int main(int argc, char **argv)
   }
 
   getcwd(initial, MAX_DATA_SIZE);
+  curr_path = malloc(MAX_DATA_SIZE);
+  curr_path = initial;
   int client_size;
   rep_type = "A"; // set default type
 
@@ -138,7 +140,7 @@ int main(int argc, char **argv)
     client_size = sizeof(client);
     if ((new_fd = accept(sockfd, (struct sockaddr *)&client, &client_size)) == -1)
     {
-      perror("accept error");
+      printf("451 Requested action aborted. Local error in processing.\n");
       continue;
     }
     printf("server: got connection from %s\n", inet_ntoa(client.sin_addr));
@@ -287,30 +289,6 @@ int cwd(int fd, char *directory)
   }
   else
   {
-    // strcpy(dir, directory);
-    // char *start = strtok(dir, "/\r\n");
-    // // Directory inputted = '/'
-    // if (start == NULL)
-    // {
-    //   send_string(fd, "550 Requested action not taken. Cannot change directory to /\n");
-    //   return 0;
-    // }
-    // else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
-    // {
-    //   send_string(fd, "550 Requested action not taken. Directory cannot start with ./ or ../\n");
-    //   return 0;
-    // }
-
-    // while (start != NULL)
-    // {
-    //   if (strcmp(start, "..") == 0)
-    //   {
-    //     send_string(fd, "550 Requested action not taken. Directory cannot contain ../\n");
-    //     return 0;
-    //   }
-
-    //   start = strtok(NULL, "/\r\n");
-    // }
 
     setCurrPath(directory);
     if (access(curr_path, F_OK) == -1) {
@@ -328,13 +306,13 @@ int cdup(int fd, char initial[])
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
 
   if (strcmp(curr_path, initial) == 0)
   {
-    send_string(fd, "Cannot process this command from parent directory.\n");
+    send_string(fd, "550 Cannot process this command from parent directory.\n");
     return 0;
   }
 
@@ -348,7 +326,7 @@ int type(int fd, char *type)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (type == NULL)
@@ -384,7 +362,7 @@ int mode(int fd, char *mode)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (mode == NULL)
@@ -413,7 +391,7 @@ int stru(int fd, char *structure)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (structure == NULL)
@@ -443,7 +421,7 @@ int retr(int fd, char *file)
 {
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
   if (file == NULL)
@@ -458,29 +436,24 @@ int retr(int fd, char *file)
     return 0;
   }
 
-  if (strcmp(rep_type, "A") != 0) {
-
-    send_string(fd, "425 Use TYPE first.\n");
-    return 0;
-  }
-
-  setCurrPath(file);
-  if (access(curr_path, F_OK) == -1) {
+  char* currFile = malloc(MAX_DATA_SIZE);
+  getRightPath(currFile, file);
+  if (access(currFile, F_OK) == -1) {
     send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
     return 0;
   }
 
-  FILE *fp = fopen(file, "rb");
+  FILE *fp = fopen(currFile, "rb");
   if (!fp) {
     send_string(fd, "550 File not found.\n");
     return 0;
   }
 
-  send_string(fd, "150 Opening data connection.\n");
+  send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
   if (new_pasv_fd == -1) {
-    printf("Error when accepting connection\n");
+    printf("451 Requested action aborted. Local error in processing.\n");
     return 0;
 
   }
@@ -495,6 +468,7 @@ int retr(int fd, char *file)
     }
   }
 
+  free(currFile);
   fclose(fp);
   close(new_pasv_fd);
   close(pasv_fd);
@@ -513,7 +487,7 @@ int pasv(int fd, char* args)
 
   if (user_in == 0)
   {
-    send_string(fd, "530 Not logged in.\n");
+    send_string(fd, "425 Not logged in.\n");
     return 0;
   }
 
@@ -571,20 +545,19 @@ int nlst(int fd, char *file)
     send_string(fd, "425 Need change to TYPE A first.\n");
     return 0;
   }
-
-
-  setCurrPath(file);
-  if (access(curr_path, F_OK) == -1) {
+  printf("%s\n", curr_path);
+  char* currDir = malloc(MAX_DATA_SIZE);
+  getRightPath(currDir, file);
+  if (access(currDir, F_OK) == -1) {
     send_string(fd, "550 Requested action not taken. File unavailable (e.g., file not found, no access).\n");
     return 0;
   }
 
-  send_string(fd, "150 Opening data connection.\n");
+  send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
-
   if (new_pasv_fd == -1) {
-    printf("Error when accepting connection\n");
+    printf("451 Requested action aborted. Local error in processing.\n");
     return 0;
 
   }
@@ -595,11 +568,12 @@ int nlst(int fd, char *file)
   free(msg);
 
   // TODO: make sure the file is in the current directory
-  if (listFiles(new_pasv_fd, curr_path) == -1) {
+  if (listFiles(new_pasv_fd, currDir) == -1) {
     sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
     return 0;
   }
 
+  free(currDir);
   close(new_pasv_fd);
   close(pasv_fd);
   pasv_fd = -1;
@@ -635,5 +609,21 @@ void setCurrPath(char* path) {
     strcat(curr_path, path);
   }
 
+}
+
+// EFFECTS: get a path in a abosulte path format e.g. /home/usr/......./a3_rzhyang_yliu8912/path
+void getRightPath (char* result, char* path) {
+  if (path == NULL || strlen(path) == 1 && path[0] == '.') {
+    strcpy(result, curr_path);
+  } else if (strlen(path) == 0) {
+    strcpy(result, curr_path);
+  } else if (strlen(path) > 0 && path[0] == '/') {
+    strcpy(result, initial);
+    strcat(result, path);
+  } else {
+    strcpy(result, initial);
+    strcat(result, "/");
+    strcat(result, path);
+  }
 
 }
