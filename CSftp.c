@@ -401,7 +401,6 @@ int stru(int fd, char *structure)
 }
 
 int retr(int fd, char *file) {
-  printf("hello");
   // if (file == NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
   //   return 0;
@@ -418,25 +417,25 @@ int retr(int fd, char *file) {
   }
 
   FILE *fp = fopen(file, "rb");
-  if (fp == NULL) {
+  if (!fp) {
     send_string(fd, "550 File not found.\n");
     return 0;
   }
 
-  send_string(fd, "150 File status okay; about to open data connection.\n");
+  send_string(fd, "150 Opening data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
   if (new_pasv_fd == -1) {
-    printf("error when accepting connection\n");
-    return -1;
+    printf("Error when accepting connection\n");
+    return 0;
   }
 
   char buf[MAX_DATA_SIZE];
   int n;
   while ((n = fread(buf, 1, MAX_DATA_SIZE, fp)) > 0) {
     if (send(new_pasv_fd, buf, n, 0) == -1) {
-      printf("error when sending data\n");
-      return -1;
+      printf("Error when sending data\n");
+      return 0;
     }
   }
 
@@ -445,7 +444,7 @@ int retr(int fd, char *file) {
   close(pasv_fd);
   pasv_fd = -1;
 
-  send_string(fd, "226 Closing data connection. Requested file action successful.\n");
+  send_string(fd, "226 Closing data connection. Requested file action success.\n");
   return 0;
 }
 
@@ -459,7 +458,7 @@ int pasv(int fd, char* args)
 
     pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (pasv_fd == -1) {
-      printf("error when creating socket\n");
+      printf("Error when creating socket\n");
       return 0;
     }
     int port = rand() % 65535 + 1024;
@@ -468,12 +467,12 @@ int pasv(int fd, char* args)
     server.sin_port = htons(port);
     memset(server.sin_zero, '\0', sizeof(server.sin_zero));
     if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
-      printf("error when binding socket\n");
+      printf("Error when binding socket\n");
       return 0;
     }
 
     if (listen(pasv_fd, 1) == -1) {
-      printf("error when listening\n");
+      printf("Error when listening\n");
       return 0;
     }
 
@@ -484,7 +483,7 @@ int pasv(int fd, char* args)
     char *msg = malloc(100);
     int IPNum[4] = {0,0,0,0};
     if (sscanf(ip, "%d.%d.%d.%d", &IPNum[0], &IPNum[1], &IPNum[2], &IPNum[3]) != 4){
-      printf("error when parsing ip address\n");
+      printf("Error when parsing ip address\n");
       return 0;
     }
     sprintf(msg, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\n",IPNum[0],IPNum[1],IPNum[2],IPNum[3], port / 256, port % 256);
@@ -510,17 +509,16 @@ int nlst(int fd, char* args) {
     return 0;
   }
   
-  
-  send_string(fd, "150 File status okay; about to open data connection.\n");
+  send_string(fd, "150 Opening data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
   if (new_pasv_fd == -1) {
-    printf("error when accepting connection\n");
-    return -1;
+    printf("Error when accepting connection\n");
+    return 0;
   }
 
   char *msg = malloc(100);
-  sprintf(msg, "226 Closing data connection. Requested file action successful.\n");
+  sprintf(msg, "226 Closing data connection. Requested file action success.\n");
   send_string(fd, msg);
   free(msg);
 
