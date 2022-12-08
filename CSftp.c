@@ -23,16 +23,15 @@
 void send_string(int fd, char *msg);
 int parse_cmd(char *cmd);
 int user(int fd, char *username);
-int quit();
+int quit(int fd);
 int cwd(int fd, char *directory);
 int cdup(int fd, char initial[]);
 int type(int fd, char *type);
 int mode(int fd, char *mode);
 int stru(int fd, char *structure);
-int pasv(int fd, char* port);
+int pasv(int fd, char *port);
 int retr(int fd, char *file);
 int nlst();
-
 
 typedef enum
 {
@@ -139,6 +138,7 @@ int main(int argc, char **argv)
       continue;
     }
     printf("server: got connection from %s\n", inet_ntoa(client.sin_addr));
+    send_string(new_fd, "220 connection ready.\n");
 
     pthread_t child;
     if (pthread_create(&child, NULL, handler, new_socket) < 0)
@@ -168,8 +168,8 @@ void *handler(void *socket)
   {
     if (parse_cmd(buf) == -1)
     {
-      // TODO: what to do when invalid command?
       printf("invalid command, please enter a valid command\n");
+      send_string(new_fd, "500 Syntax error, command unrecognized.\n");
       continue;
     }
   }
@@ -235,18 +235,16 @@ int parse_cmd(char *cmd)
 
 int user(int fd, char *user)
 {
-  if (user_in == 1)
+  if (user == NULL)
   {
-    send_string(fd, "already logged in\n"); // TODO: check error codes
+    send_string(fd, "501 Syntax Error in parameters or arguments. Please input username\n");
   }
-  else if (user == NULL)
-  {
-    send_string(fd, "please input username\n");
-  }
-  else
+  else if (strcmp(user, "cs317") == 0)
   {
     user_in = 1;
     send_string(fd, "230 User logged in, proceed.\n");
+  } else {
+    send_string(fd, "530 Not logged in.\n");
   }
 
   return 0;
@@ -267,6 +265,12 @@ int cwd(int fd, char *directory)
 {
   char dir[MAX_DATA_SIZE];
 
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
+
   if (directory == NULL)
   {
     send_string(fd, "Failed to change directory. Need to input directory.\n");
@@ -278,12 +282,12 @@ int cwd(int fd, char *directory)
     // Directory inputted = '/'
     if (start == NULL)
     {
-      send_string(fd, "Cannoto change directory to /\n");
+      send_string(fd, "550 Requested action not taken. Cannot change directory to /\n");
       return 0;
     }
     else if (strcmp(start, ".") == 0 || strcmp(start, "..") == 0)
     {
-      send_string(fd, "Directory cannot start with ./ or ../\n");
+      send_string(fd, "550 Requested action not taken. Directory cannot start with ./ or ../\n");
       return 0;
     }
 
@@ -291,7 +295,7 @@ int cwd(int fd, char *directory)
     {
       if (strcmp(start, "..") == 0)
       {
-        send_string(fd, "Directory cannot contain ../\n");
+        send_string(fd, "550 Requested action not taken. Directory cannot contain ../\n");
         return 0;
       }
 
@@ -305,7 +309,7 @@ int cwd(int fd, char *directory)
     }
     else
     {
-      send_string(fd, "Directory changed successfully.\n");
+      send_string(fd, "250 Requested file action okay, completed. Directory changed successfully.\n");
     }
   }
 
@@ -314,6 +318,11 @@ int cwd(int fd, char *directory)
 
 int cdup(int fd, char initial[])
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   char current[MAX_DATA_SIZE];
 
   getcwd(current, MAX_DATA_SIZE);
@@ -325,7 +334,7 @@ int cdup(int fd, char initial[])
 
   if (chdir("..") == 0)
   {
-    send_string(fd, "Directly successfully changed back to parent directory.\n");
+    send_string(fd, "200 Command Ok. Directly successfully changed back to parent directory.\n");
     return 0;
   }
   else
@@ -338,6 +347,11 @@ int cdup(int fd, char initial[])
 
 int type(int fd, char *type)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   if (type == NULL)
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -355,6 +369,11 @@ int type(int fd, char *type)
     send_string(fd, "200 Command okay. Switching to raw binary.\n");
     return 0;
   }
+  else if (strcasecmp(type, "E") == 0 || strcasecmp(type, "L") == 0)
+  {
+    send_string(fd, "504 command not implemented for that representation type.\n");
+    return 0;
+  }
   else
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -364,6 +383,11 @@ int type(int fd, char *type)
 
 int mode(int fd, char *mode)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   if (mode == NULL)
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -372,6 +396,11 @@ int mode(int fd, char *mode)
   else if (strcasecmp(mode, "S") == 0)
   {
     send_string(fd, "200 Command okay. Mode set to stream mode.\n");
+    return 0;
+  }
+  else if (strcasecmp(mode, "B") == 0 || strcasecmp(mode, "C") == 0)
+  {
+    send_string(fd, "504 command not implemented for that transmission mode.\n");
     return 0;
   }
   else
@@ -383,6 +412,11 @@ int mode(int fd, char *mode)
 
 int stru(int fd, char *structure)
 {
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
   if (structure == NULL)
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -393,6 +427,11 @@ int stru(int fd, char *structure)
     send_string(fd, "200 Command okay. Data structure set to file.\n");
     return 0;
   }
+  else if (strcasecmp(structure, "R") == 0 || strcasecmp(structure, "P") == 0)
+  {
+    send_string(fd, "504 command not implemented for that structure.\n");
+    return 0;
+  }
   else
   {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -400,18 +439,28 @@ int stru(int fd, char *structure)
   return 0;
 }
 
-int retr(int fd, char *file) {
-  // if (file == NULL) {
-  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
-  //   return 0;
-  // }
 
-  if (pasv_fd == -1) {
+int retr(int fd, char *file)
+{
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
+  if (file == NULL)
+  {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
+
+  if (pasv_fd == -1)
+  {
     send_string(fd, "425 Use PORT or PASV first.\n");
     return 0;
   }
 
   if (strcmp(rep_type, "A") != 0) {
+
     send_string(fd, "425 Use TYPE first.\n");
     return 0;
   }
@@ -428,6 +477,7 @@ int retr(int fd, char *file) {
   if (new_pasv_fd == -1) {
     printf("Error when accepting connection\n");
     return 0;
+
   }
 
   char buf[MAX_DATA_SIZE];
@@ -436,6 +486,7 @@ int retr(int fd, char *file) {
     if (send(new_pasv_fd, buf, n, 0) == -1) {
       printf("Error when sending data\n");
       return 0;
+
     }
   }
 
@@ -452,6 +503,11 @@ int pasv(int fd, char* args)
 {
   if (args != NULL) {
     send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
     return 0;
   }
 
@@ -475,24 +531,31 @@ int pasv(int fd, char* args)
       return 0;
     }
 
-    char *ip = inet_ntoa(client.sin_addr);
-    printf("ip: %s\n", ip);
-    printf("port: %d\n", port);
 
-    char *msg = malloc(100);
-    int IPNum[4] = {0,0,0,0};
-    if (sscanf(ip, "%d.%d.%d.%d", &IPNum[0], &IPNum[1], &IPNum[2], &IPNum[3]) != 4){
-      printf("Error when parsing ip address\n");
-      return 0;
-    }
-    sprintf(msg, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\n",IPNum[0],IPNum[1],IPNum[2],IPNum[3], port / 256, port % 256);
-    send_string(fd, msg);
-    free(msg);
+  char *ip = inet_ntoa(client.sin_addr);
+  printf("ip: %s\n", ip);
+  printf("port: %d\n", port);
+
+  char *msg = malloc(100);
+  int IPNum[4] = {0,0,0,0};
+  if (sscanf(ip, "%d.%d.%d.%d", &IPNum[0], &IPNum[1], &IPNum[2], &IPNum[3]) != 4){
+    printf("Error when parsing ip address\n");
+    return 0;
+  }
+  sprintf(msg, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\n",IPNum[0],IPNum[1],IPNum[2],IPNum[3], port / 256, port % 256);
+  send_string(fd, msg);
+  free(msg);
   return 0;
 }
 
-int nlst(int fd, char* file) {
-  // TODO: check args 501
+int nlst(int fd, char *args)
+{
+  if (user_in == 0)
+  {
+    send_string(fd, "530 Not logged in.\n");
+    return 0;
+  }
+
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
   //   return 0;
@@ -500,6 +563,7 @@ int nlst(int fd, char* file) {
 
   if (pasv_fd == -1) {
     send_string(fd, "425 Need call PASV first.\n");
+
     return 0;
   }
 
@@ -511,9 +575,11 @@ int nlst(int fd, char* file) {
   send_string(fd, "150 Opening data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
+
   if (new_pasv_fd == -1) {
     printf("Error when accepting connection\n");
     return 0;
+
   }
 
   char *msg = malloc(100);
@@ -533,7 +599,6 @@ int nlst(int fd, char* file) {
 
   return 0;
 }
-
 
 void send_string(int fd, char *msg)
 {
