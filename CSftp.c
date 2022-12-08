@@ -492,7 +492,7 @@ int pasv(int fd, char* args)
   return 0;
 }
 
-int nlst(int fd, char* args) {
+int nlst(int fd, char* path) {
   // TODO: check args 501
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -523,7 +523,10 @@ int nlst(int fd, char* args) {
   free(msg);
 
   // TODO: make sure the file is in the current directory
-  listFiles(new_pasv_fd, ".");
+  if (listFiles(new_pasv_fd, ".") == -1) {
+    sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
+    return 0;
+  }
 
   close(new_pasv_fd);
   close(pasv_fd);
