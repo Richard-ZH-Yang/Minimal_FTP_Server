@@ -23,7 +23,7 @@
 void send_string(int fd, char *msg);
 int parse_cmd(char *cmd);
 int user(int fd, char *username);
-int quit(int fd, char *args);
+int quit(int fd);
 int cwd(int fd, char *directory);
 int cdup(int fd, char initial[]);
 int type(int fd, char *type);
@@ -199,7 +199,7 @@ int parse_cmd(char *cmd)
     return user(new_fd, args);
     break;
   case QUIT:
-    return quit(new_fd, args);
+    return quit(new_fd);
     break;
   case CWD:
     return cwd(new_fd, args);
@@ -247,13 +247,8 @@ int user(int fd, char *user)
   return 0;
 }
 
-int quit(int fd, char *args)
+int quit(int fd)
 {
-  if (args != NULL)
-  {
-    send_string(fd, "500 syntax error, too many arguments.\n");
-    return 0;
-  }
   send_string(fd, "221 Goodbye.\n");
   user_in = 0;
   close(new_fd);
