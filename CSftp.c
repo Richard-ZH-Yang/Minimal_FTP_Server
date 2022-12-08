@@ -465,7 +465,7 @@ int pasv(int fd, char *args)
     pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (pasv_fd == -1) {
       printf("error when creating socket\n");
-      return -1;
+      return 0;
     }
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
@@ -473,12 +473,12 @@ int pasv(int fd, char *args)
     memset(server.sin_zero, '\0', sizeof(server.sin_zero));
     if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
       printf("error when binding socket\n");
-      return -1;
+      return 0;
     }
 
     if (listen(pasv_fd, 1) == -1) {
       printf("error when listening\n");
-      return -1;
+      return 0;
     }
 
     char *ip = inet_ntoa(client.sin_addr);
@@ -487,7 +487,13 @@ int pasv(int fd, char *args)
 
     char *msg = malloc(100);
     // TODO: ip address sepearte by comma
-    sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
+    // sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
+    int IPNum[4] = {0,0,0,0};
+    if (sscanf(ip, "%d.%d.%d.%d", &IPNum[0], &IPNum[1], &IPNum[2], &IPNum[3]) != 4){
+      printf("error when parsing ip address\n");
+      return 0;
+    }
+    sprintf(msg, "227 Entering Passive Mode (%d,%d,%d,%d,%d,%d).\n",IPNum[0],IPNum[1],IPNum[2],IPNum[3], port / 256, port % 256);
     send_string(fd, msg);
     free(msg);
   return 0;
