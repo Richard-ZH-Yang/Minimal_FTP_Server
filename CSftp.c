@@ -15,11 +15,9 @@
 #include <pthread.h>
 
 #define BACKLOG 10 // how many pending connetions queue will hold
-#define MAX_DATA_SIZE 256
+#define MAX_DATA_SIZE 256 // the maximum length for data entries
 
-// Here is an example of how to use the above function. It also shows
-// one how to get the arguments passed on the command line.
-/* this function is run by the second thread */
+// list of functions
 void send_string(int fd, char *msg);
 int parse_cmd(char *cmd);
 int user(int fd, char *username);
@@ -32,6 +30,9 @@ int stru(int fd, char *structure);
 int pasv(int fd, char *port);
 int retr(int fd, char *file);
 int nlst(int fd, char *file);
+void *handler(void *socket);
+void setCurrPath(char* path);
+void getRightPath (char* result, char* path);
 
 typedef enum
 {
@@ -66,29 +67,10 @@ int user_in = 0;
 char initial[MAX_DATA_SIZE];
 char *curr_path;
 char *rep_type;
-void *inc_x()
-{
-  printf("x increment finished\n");
-  return NULL;
-}
-
-void *handler(void *socket);
-
-void setCurrPath(char* path);
-
-void getRightPath (char* result, char* path);
 
 int main(int argc, char **argv)
 {
-
-  // This is some sample code feel free to delete it
-  // This is the main program for the thread version of nc
-
-  // int i;
-  // pthread_t child;
-  // pthread_create(&child, NULL, inc_x, NULL);
-
-  // Check the command line arguments
+  // arg count has to be 2
   if (argc != 2)
   {
     usage(argv[0]);
@@ -97,6 +79,7 @@ int main(int argc, char **argv)
 
   portNum = atoi(argv[1]);
 
+  // valid port number
   if (portNum < 1024 || portNum > 65535)
   {
     usage(argv[0]);
@@ -153,17 +136,12 @@ int main(int argc, char **argv)
       return -1;
     }
     pthread_join(child, NULL);
-
-    // This is how to call the function in dir.c to get a listing of a directory.
-    // It requires a file descriptor, so in your code you would pass in the file descriptor
-    // returned for the ftp server's data connection
-
-    printf("Printed %d directory entries\n", listFiles(1, "."));
   }
   return 0;
 
 }
 
+// EFFECTS: recive command from client and perform functionalities based on parsed command
 void *handler(void *socket)
 {
   printf("thread created!\n");
@@ -491,26 +469,25 @@ int pasv(int fd, char* args)
     return 0;
   }
 
-    pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (pasv_fd == -1) {
-      printf("Error when creating socket\n");
-      return 0;
-    }
-    int port = rand() % 65535 + 1024;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_family = AF_INET;
-    server.sin_port = htons(port);
-    memset(server.sin_zero, '\0', sizeof(server.sin_zero));
-    if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
-      printf("Error when binding socket\n");
-      return 0;
-    }
+  pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (pasv_fd == -1) {
+    printf("Error when creating socket\n");
+    return 0;
+  }
+  int port = rand() % 65535 + 1024;
+  server.sin_addr.s_addr = INADDR_ANY;
+  server.sin_family = AF_INET;
+  server.sin_port = htons(port);
+  memset(server.sin_zero, '\0', sizeof(server.sin_zero));
+  if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
+    printf("Error when binding socket\n");
+    return 0;
+  }
 
-    if (listen(pasv_fd, 1) == -1) {
-      printf("Error when listening\n");
-      return 0;
-    }
-
+  if (listen(pasv_fd, 1) == -1) {
+    printf("Error when listening\n");
+    return 0;
+  }
 
   char *ip = inet_ntoa(client.sin_addr);
   printf("ip: %s\n", ip);
@@ -567,7 +544,6 @@ int nlst(int fd, char *file)
   send_string(fd, msg);
   free(msg);
 
-  // TODO: make sure the file is in the current directory
   if (listFiles(new_pasv_fd, currDir) == -1) {
     sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
     return 0;
@@ -581,6 +557,7 @@ int nlst(int fd, char *file)
   return 0;
 }
 
+// EFFECTS: send the message to the file descriptor 
 void send_string(int fd, char *msg)
 {
   if (send(fd, msg, strlen(msg), 0) == -1)
@@ -589,7 +566,7 @@ void send_string(int fd, char *msg)
   }
 }
 
-// EFFECTS: get a path in a abosulte path format e.g. /home/usr/......./a3_rzhyang_yliu8912/path
+// EFFECTS: set curr_path in a abosulte path format e.g. /home/usr/......./a3_rzhyang_yliu8912/path
 void setCurrPath(char* path) {
   // reset curr_path if it's not valid
   if (access(curr_path, F_OK) == -1) {
@@ -611,7 +588,7 @@ void setCurrPath(char* path) {
 
 }
 
-// EFFECTS: get a path in a abosulte path format e.g. /home/usr/......./a3_rzhyang_yliu8912/path
+// EFFECTS: set result for a file or directory based on curr_path and path
 void getRightPath (char* result, char* path) {
   if (path == NULL || strlen(path) == 1 && path[0] == '.') {
     strcpy(result, curr_path);
