@@ -450,11 +450,10 @@ int retr(int fd, char *file) {
 
 int pasv(int fd, char* args)
 {
-  // TODO: check if args 501
-  // if (args != NULL) {
-  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
-  //   return 0;
-  // }
+  if (args != NULL) {
+    send_string(fd, "501 Syntax error in parameters or arguments.\n");
+    return 0;
+  }
 
     pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (pasv_fd == -1) {
@@ -492,7 +491,7 @@ int pasv(int fd, char* args)
   return 0;
 }
 
-int nlst(int fd, char* path) {
+int nlst(int fd, char* file) {
   // TODO: check args 501
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
@@ -523,7 +522,7 @@ int nlst(int fd, char* path) {
   free(msg);
 
   // TODO: make sure the file is in the current directory
-  if (listFiles(new_pasv_fd, ".") == -1) {
+  if (listFiles(new_pasv_fd, file) == -1) {
     sprintf(msg, "450 Requested file action not taken. File unavailable (e.g., file busy).\n");
     return 0;
   }
