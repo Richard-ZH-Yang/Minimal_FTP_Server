@@ -258,6 +258,7 @@ int quit(int fd)
   send_string(fd, "221 Goodbye.\n");
   close(new_fd);
   close(pasv_fd);
+  close(new_socket);
   return -1;
 }
 
@@ -411,15 +412,10 @@ int retr(int fd, char *file) {
     return 0;
   }
 
-  // if (rep_type == NULL) {
-  //   send_string(fd, "425 Use TYPE first.\n");
-  //   return 0;
-  // }
-
-  // if (rep_type[0] == 'A') {
-  //   send_string(fd, "425 Use TYPE I first.\n");
-  //   return 0;
-  // }
+  if (strcmp(rep_type, "A") != 0) {
+    send_string(fd, "425 Use TYPE first.\n");
+    return 0;
+  }
 
   FILE *fp = fopen(file, "rb");
   if (fp == NULL) {
@@ -453,23 +449,23 @@ int retr(int fd, char *file) {
   return 0;
 }
 
-int pasv(int fd, char *args)
+int pasv(int fd, char* args)
 {
-  // TODO: check syntax error 501
+  // TODO: check if args 501
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
   //   return 0;
   // }
 
-    int port = rand() % 65535 + 1024;
     pasv_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (pasv_fd == -1) {
       printf("error when creating socket\n");
       return 0;
     }
+    int port = rand() % 65535 + 1024;
+    server.sin_addr.s_addr = INADDR_ANY;
     server.sin_family = AF_INET;
     server.sin_port = htons(port);
-    server.sin_addr.s_addr = INADDR_ANY;
     memset(server.sin_zero, '\0', sizeof(server.sin_zero));
     if (bind(pasv_fd, (struct sockaddr *) &server, sizeof(server)) == -1) {
       printf("error when binding socket\n");
@@ -486,8 +482,6 @@ int pasv(int fd, char *args)
     printf("port: %d\n", port);
 
     char *msg = malloc(100);
-    // TODO: ip address sepearte by comma
-    // sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
     int IPNum[4] = {0,0,0,0};
     if (sscanf(ip, "%d.%d.%d.%d", &IPNum[0], &IPNum[1], &IPNum[2], &IPNum[3]) != 4){
       printf("error when parsing ip address\n");
@@ -500,19 +494,23 @@ int pasv(int fd, char *args)
 }
 
 int nlst(int fd, char* args) {
-  
+  // TODO: check args 501
   // if (args != NULL) {
   //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
   //   return 0;
   // }
 
   if (pasv_fd == -1) {
-    send_string(fd, "425 Use PORT or PASV first.\n");
+    send_string(fd, "425 Need call PASV first.\n");
     return 0;
   }
 
-  // TODO: check if use type first
-
+  if (strcmp(rep_type, "A") != 0) {
+    send_string(fd, "425 Need change to TYPE A first.\n");
+    return 0;
+  }
+  
+  
   send_string(fd, "150 File status okay; about to open data connection.\n");
 
   int new_pasv_fd = accept(pasv_fd, NULL, NULL);
