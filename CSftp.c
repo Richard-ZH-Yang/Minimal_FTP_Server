@@ -153,8 +153,9 @@ int main(int argc, char **argv)
     // returned for the ftp server's data connection
 
     printf("Printed %d directory entries\n", listFiles(1, "."));
-    return 0;
   }
+  return 0;
+
 }
 
 void *handler(void *socket)
@@ -253,9 +254,10 @@ int user(int fd, char *user)
 
 int quit(int fd)
 {
-  send_string(fd, "221 Goodbye.\n");
   user_in = 0;
+  send_string(fd, "221 Goodbye.\n");
   close(new_fd);
+  close(pasv_fd);
   return -1;
 }
 
@@ -399,25 +401,25 @@ int stru(int fd, char *structure)
 
 int retr(int fd, char *file) {
   printf("hello");
-  if (file == NULL) {
-    send_string(fd, "501 Syntax error in parameters or arguments.\n");
-    return 0;
-  }
+  // if (file == NULL) {
+  //   send_string(fd, "501 Syntax error in parameters or arguments.\n");
+  //   return 0;
+  // }
 
   if (pasv_fd == -1) {
     send_string(fd, "425 Use PORT or PASV first.\n");
     return 0;
   }
 
-  if (rep_type == NULL) {
-    send_string(fd, "425 Use TYPE first.\n");
-    return 0;
-  }
+  // if (rep_type == NULL) {
+  //   send_string(fd, "425 Use TYPE first.\n");
+  //   return 0;
+  // }
 
-  if (rep_type[0] == 'A') {
-    send_string(fd, "425 Use TYPE I first.\n");
-    return 0;
-  }
+  // if (rep_type[0] == 'A') {
+  //   send_string(fd, "425 Use TYPE I first.\n");
+  //   return 0;
+  // }
 
   FILE *fp = fopen(file, "rb");
   if (fp == NULL) {
@@ -484,6 +486,7 @@ int pasv(int fd, char *args)
     printf("port: %d\n", port);
 
     char *msg = malloc(100);
+    // TODO: ip address sepearte by comma
     sprintf(msg, "227 Entering Passive Mode (%s,%d,%d).\n", ip, port / 256, port % 256);
     send_string(fd, msg);
     free(msg);
